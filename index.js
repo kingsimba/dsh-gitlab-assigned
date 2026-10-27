@@ -1,5 +1,5 @@
 /**
- * gitlab-assigned-mrs — "what is assigned to me on GitLab?".
+ * dsh-gitlab-assigned — "what is assigned to me on GitLab?".
  *
  * Three surfaces over one collector:
  *  - the global Host tool `gitlab_assigned_merge_requests`, available to every
@@ -15,7 +15,7 @@
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
-export const name = 'gitlab-assigned-mrs';
+export const name = 'gitlab-assigned';
 
 /** The tool registry is the only required Host service; `webServer` powers the page. */
 export const inject = ['tools'];
@@ -133,7 +133,7 @@ export function apply(ctx, config) {
         headers: {
           'PRIVATE-TOKEN': settings.token,
           accept: 'application/json',
-          'user-agent': 'dsh-gitlab-assigned-mrs',
+          'user-agent': 'dsh-gitlab-assigned',
         },
         signal: controller.signal,
       });
@@ -276,16 +276,25 @@ export function apply(ctx, config) {
 
   // -------------------------------------------------------------- settings
 
+  /** Profile root that holds per-plugin state, or an empty string when unavailable. */
+  function profileDirectory() {
+    return typeof process.env.DSH_PROFILE_DIR === 'string' && process.env.DSH_PROFILE_DIR !== ''
+      ? process.env.DSH_PROFILE_DIR
+      : typeof process.env.DSH_HOME === 'string' && process.env.DSH_HOME !== ''
+        ? process.env.DSH_HOME
+        : '';
+  }
+
   /** Directory holding the local settings override, or null without a profile dir. */
   function storeDirectory() {
-    const base =
-      typeof process.env.DSH_PROFILE_DIR === 'string' && process.env.DSH_PROFILE_DIR !== ''
-        ? process.env.DSH_PROFILE_DIR
-        : typeof process.env.DSH_HOME === 'string' && process.env.DSH_HOME !== ''
-          ? process.env.DSH_HOME
-          : '';
-    if (base === '') return null;
-    return join(base, 'gitlab-assigned-mrs');
+    const base = profileDirectory();
+    return base === '' ? null : join(base, 'gitlab-assigned');
+  }
+
+  /** Directory used before the plugin was renamed; its files are still read once. */
+  function previousStoreDirectory() {
+    const base = profileDirectory();
+    return base === '' ? null : join(base, 'gitlab-assigned-mrs');
   }
 
   function storeFilePath() {
@@ -293,10 +302,19 @@ export function apply(ctx, config) {
     return dir === null ? null : join(dir, 'settings.json');
   }
 
-  /** Pre-`settings.json` layout, which stored projects only. */
-  function legacyStoreFilePath() {
+  /**
+   * Files written before the current layout: `projects.json` (which stored projects
+   * only), and the whole `gitlab-assigned-mrs` directory from before the rename.
+   */
+  function legacyStoreFilePaths() {
+    const files = [];
     const dir = storeDirectory();
-    return dir === null ? null : join(dir, 'projects.json');
+    const previous = previousStoreDirectory();
+    if (dir !== null) files.push(join(dir, 'projects.json'));
+    if (previous !== null) {
+      files.push(join(previous, 'settings.json'), join(previous, 'projects.json'));
+    }
+    return files;
   }
 
   async function readJsonFile(file) {
@@ -306,7 +324,7 @@ export function apply(ctx, config) {
     } catch (error) {
       if (error?.code !== 'ENOENT') {
         ctx.logger?.warn?.(
-          `gitlab-assigned-mrs: ignoring unreadable settings file ${file} (${messageOf(error)})`,
+          `gitlab-assigned: ignoring unreadable settings file ${file} (${messageOf(error)})`,
         );
       }
       return null;
@@ -318,8 +336,11 @@ export function apply(ctx, config) {
    * set", so the config defaults still apply; the two are independent.
    */
   async function readStoredSettings() {
-    const parsed =
-      (await readJsonFile(storeFilePath())) ?? (await readJsonFile(legacyStoreFilePath()));
+    let parsed = await readJsonFile(storeFilePath());
+    for (const file of legacyStoreFilePaths()) {
+      if (parsed !== null) break;
+      parsed = await readJsonFile(file);
+    }
     storedSettings =
       parsed === null
         ? { baseUrl: '', projects: [] }
@@ -368,14 +389,13 @@ export function apply(ctx, config) {
       `${JSON.stringify({ version: 2, baseUrl: next.baseUrl, projects: next.projects }, null, 2)}\n`,
       'utf8',
     );
-    const legacy = legacyStoreFilePath();
-    if (legacy !== null) await rm(legacy, { force: true });
+    for (const legacyFile of legacyStoreFilePaths()) await rm(legacyFile, { force: true });
     storedSettings = { baseUrl: next.baseUrl, projects: next.projects };
     forgetCaches();
   }
 
   async function clearStoredSettings() {
-    for (const file of [storeFilePath(), legacyStoreFilePath()]) {
+    for (const file of [storeFilePath(), ...legacyStoreFilePaths()]) {
       if (file !== null) await rm(file, { force: true });
     }
     storedSettings = { baseUrl: '', projects: [] };
@@ -617,7 +637,7 @@ export function apply(ctx, config) {
       }
       if (settings.token === '') {
         throw new Error(
-          'No GitLab token is configured. Set `token` in the gitlab-assigned-mrs plugin config, or set the GITLAB_TOKEN environment variable before starting the Harness.',
+          'No GitLab token is configured. Set `token` in the dsh-gitlab-assigned plugin config, or set the GITLAB_TOKEN environment variable before starting the Harness.',
         );
       }
       const state = pickState(args);
@@ -878,7 +898,7 @@ export function apply(ctx, config) {
               });
             },
           }),
-        `gitlab-assigned-mrs: route ${path}`,
+        `gitlab-assigned: route ${path}`,
       );
     }
   });
@@ -954,7 +974,7 @@ function normalizeSettings(config) {
   const baseUrl = normalizeBaseUrl(source.baseUrl);
   const declaredBaseUrl = typeof source.baseUrl === 'string' ? source.baseUrl.trim() : '';
   if (declaredBaseUrl !== '' && baseUrl === '') {
-    throw new Error(`gitlab-assigned-mrs: baseUrl must be an http(s) URL, got "${source.baseUrl}".`);
+    throw new Error(`gitlab-assigned: baseUrl must be an http(s) URL, got "${source.baseUrl}".`);
   }
 
   const token =

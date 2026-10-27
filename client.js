@@ -1,24 +1,26 @@
 /**
- * gitlab-assigned-mrs — Client half.
+ * dsh-gitlab-assigned — Client half.
  *
- * Two registrations, both on shell-owned slots:
+ * Three registrations, all on shell-owned slots:
  *  - `sidebar.panellist` with id `gitlab-mrs`: the sidebar row (icon + label). The
  *    shell owns the button and dispatches the main panel with the same id.
  *  - `main` with key `gitlab-mrs`: the panel body, a full-height page with its own
  *    header, state filter, day groups, and paging through the Host JSON route
  *    `/gitlab-mrs/api/list`.
+ *  - `settings.section` with id `gitlab-mrs`: the GitLab URL and project list the
+ *    Host reads, saved through `/gitlab-mrs/api/settings`.
  *
  * The list is newest-first and grouped by local creation day; reaching the bottom
  * loads the next slice, so older requests arrive a page at a time.
  */
 
 window.__ModuleLoader__.load({
-  id: '@local/gitlab-assigned-mrs',
+  id: 'dsh-gitlab-assigned',
   factory(require) {
     const React = require('react');
     const h = React.createElement;
 
-    const NS = 'gitlab-assigned-mrs';
+    const NS = 'gitlab-assigned';
     const PANEL_ID = 'gitlab-mrs';
     const API_BASE = 'gitlab-mrs/api';
     const PAGE_SIZE = 10;
@@ -1020,10 +1022,10 @@ window.__ModuleLoader__.load({
     return {
       inject: ['slots', 'locale'],
       apply(ctx) {
-        ctx.effect(() => ctx.locale.register(NS, { en, zh }), 'gitlab-mrs: dictionaries');
+        ctx.effect(() => ctx.locale.register(NS, { en, zh }), 'gitlab-assigned: dictionaries');
         const t = translator(ctx.locale.bind(NS));
         boundTranslator = t;
-        ctx.effect(() => installStyles(), 'gitlab-mrs: styles');
+        ctx.effect(() => installStyles(), 'gitlab-assigned: styles');
 
         ctx.effect(
           () =>
@@ -1039,7 +1041,7 @@ window.__ModuleLoader__.load({
                 PanelIcon,
               ),
             ),
-          'gitlab-mrs: sidebar entry',
+          'gitlab-assigned: sidebar entry',
         );
 
         ctx.effect(
@@ -1047,7 +1049,7 @@ window.__ModuleLoader__.load({
             ctx.slots.inject('main', () =>
               ctx.slots.register({ name: 'main', key: PANEL_ID, locale: NS }, MergeRequestsPanel),
             ),
-          'gitlab-mrs: panel',
+          'gitlab-assigned: panel',
         );
 
         ctx.effect(
@@ -1064,7 +1066,7 @@ window.__ModuleLoader__.load({
                 SettingsSection,
               ),
             ),
-          'gitlab-mrs: settings page',
+          'gitlab-assigned: settings page',
         );
       },
     };

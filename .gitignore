@@ -11,3 +11,6 @@ node_modules/
 .DS_Store
 Thumbs.db
 *.log
+
+# Runtime state some plugins write when this checkout is used as a workspace.
+.dsh/

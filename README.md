@@ -56,9 +56,10 @@ panel and the tool answer with a "not configured" message.
 - `Reset to plugin config` deletes the override and falls back to
   `cordis.patch.yml`.
 - The saved values live in
-  `$DSH_PROFILE_DIR/gitlab-assigned-mrs/settings.json` and survive profile
-  restarts and bundle upgrades. (An older `projects.json` from before this file
-  existed is still read, and is rewritten as `settings.json` on the next save.)
+  `$DSH_PROFILE_DIR/gitlab-assigned/settings.json` and survive profile
+  restarts and bundle upgrades. (An older `projects.json`, and anything saved
+  under the pre-rename `gitlab-assigned-mrs` directory, is still read and is
+  rewritten as `settings.json` on the next save.)
 
 The token is **not** edited on this page: it stays in the plugin config or the
 `GITLAB_TOKEN` environment variable.
@@ -108,8 +109,8 @@ upgrades), add an id-targeted override to the profile patch layer
 object, so repeat every key you still need:
 
 ```yaml
-- id: gitlab-assigned-mrs
-  name: '@local/gitlab-assigned-mrs'
+- id: gitlab-assigned
+  name: dsh-gitlab-assigned
   config:
     baseUrl: 'https://gitlab.example.com'
     token: '<your GitLab token>'
@@ -135,7 +136,7 @@ eight at a time so a large config does not burst GitLab's rate limiter.
 ## Repository
 
 This package is a git checkout of
-`git@github.com:kingsimba/gitlab-assigned-mrs.git`, tracking `origin/main`:
+`git@github.com:kingsimba/dsh-gitlab-assigned.git`, tracking `origin/main`:
 
 ```sh
 git pull        # update the code; the local cordis.patch.yml is untouched

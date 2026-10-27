@@ -21,8 +21,8 @@
 # including ssh:// remotes — ssh is normalised to the https path and every
 # request goes through `baseUrl`.
 - insert:
-    - id: gitlab-assigned-mrs
-      name: '@local/gitlab-assigned-mrs'
+    - id: gitlab-assigned
+      name: 'dsh-gitlab-assigned'
       config:
         baseUrl: ''
         token: ''
