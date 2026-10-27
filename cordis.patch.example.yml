@@ -1,0 +1,33 @@
+# Template for the local `cordis.patch.yml`. Copy it, then fill in your GitLab URL
+# and token:
+#
+#   cp cordis.patch.example.yml cordis.patch.yml
+#
+# `cordis.patch.yml` itself is gitignored: it holds a credential, so a `git pull`
+# must never overwrite it.
+#
+# The defaults are intentionally empty. The same values can be set at runtime on
+# the Settings → GitLab MRs page, which stores them beside the profile and is the
+# easier place to change them; anything set here is only the fallback that
+# "Reset to plugin config" returns to.
+#
+# One Host row provides all surfaces: the global tool
+# `gitlab_assigned_merge_requests`, the loopback JSON routes the sidebar panel
+# reads, and the Settings → GitLab MRs page. Because the row is mounted on the
+# plain Host context (no preset, no agent scope), every agent in every workspace
+# sees the tool.
+#
+# `projects` entries may be paths (`group/project`), ids, or any GitLab URL,
+# including ssh:// remotes — ssh is normalised to the https path and every
+# request goes through `baseUrl`.
+- insert:
+    - id: gitlab-assigned-mrs
+      name: '@local/gitlab-assigned-mrs'
+      config:
+        baseUrl: ''
+        token: ''
+        projects: []
+        defaultState: opened
+        order: desc
+        timeoutMs: 20000
+        maxPages: 5

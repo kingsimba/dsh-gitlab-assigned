@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "GitLab: Merge Requests Assigned to Me",
+    "description": "A sidebar panel and global tool that list GitLab merge requests assigned to you across a configurable project list, newest first and grouped by day."
+  }
+}

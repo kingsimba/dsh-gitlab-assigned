@@ -1,0 +1,13 @@
+# Local runtime configuration — NOT committed.
+#
+# This file holds the GitLab token for this machine, so it stays out of git and a
+# `git pull` never touches it. Start from the committed template:
+#
+#   cp cordis.patch.example.yml cordis.patch.yml
+cordis.patch.yml
+
+# Editor / OS noise
+node_modules/
+.DS_Store
+Thumbs.db
+*.log

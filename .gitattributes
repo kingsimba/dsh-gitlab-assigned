@@ -1,0 +1,3 @@
+# Keep every checked-out file LF, so Windows and Linux checkouts never show
+# whole-file diffs.
+* text=auto eol=lf

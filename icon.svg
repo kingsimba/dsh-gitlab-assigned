@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#8b5cf6" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Merge requests assigned to me">
+  <circle cx="6.5" cy="5" r="2.6"/>
+  <circle cx="6.5" cy="19" r="2.6"/>
+  <circle cx="17.5" cy="12" r="2.6"/>
+  <path d="M6.5 7.6v8.8"/>
+  <path d="M9.1 5.6c3.7 0 3.3 5.2 5.7 6"/>
+</svg>
