@@ -5,7 +5,7 @@ One bundle, three surfaces over the same GitLab collector:
 | Surface | What it is |
 | --- | --- |
 | **Sidebar panel** | A `Merge requests` entry in the left navigation. It opens a page in the main column: newest first, grouped by creation day, paging older requests in as you scroll. |
-| **Settings page** | `Settings → GitLab MRs`: the GitLab URL and the project list, saved immediately for both the panel and the tool. |
+| **Settings page** | `Settings → GitLab MRs`: the GitLab URL, the token and the project list, saved immediately for both the panel and the tool. |
 | **Global tool** | `gitlab_assigned_merge_requests`, available to every agent in every workspace. |
 
 All three report the merge requests **assigned** to the user who owns the
@@ -44,25 +44,35 @@ panel and the tool answer with a "not configured" message.
 
 ## Settings page
 
-`Settings → GitLab MRs` edits the two values the panel and tool read:
+`Settings → GitLab MRs` edits the three values the panel and tool read:
 
 - **GitLab URL** — the instance root, e.g. `https://gitlab.example.com`, with no
   `/api/v4` suffix. Validated as an `http(s)` URL; `Save` stays disabled while it
   is empty or malformed.
+- **GitLab token** — a personal or project access token with `api` (or
+  `read_api`) scope. Leave the field empty to keep the saved token; when one is
+  saved, `Clear saved token` removes it and the plugin falls back to the config
+  and `GITLAB_TOKEN`. The value is written to the settings file but never read
+  back into the page: the page only learns whether a token exists and where it
+  comes from.
 - **Projects** — one per line, in any accepted form (see *Project references*
   below).
-- `Save` normalises both (`ssh → https` path, `.git`/`/-/tree/...` stripped,
+- `Save` normalises all three (`ssh → https` path, `.git`/`/-/tree/...` stripped,
   duplicates dropped) and applies them immediately — no restart.
 - `Reset to plugin config` deletes the override and falls back to
   `cordis.patch.yml`.
-- The saved values live in
-  `$DSH_PROFILE_DIR/gitlab-assigned/settings.json` and survive profile
-  restarts and bundle upgrades. (An older `projects.json`, and anything saved
-  under the pre-rename `gitlab-assigned-mrs` directory, is still read and is
-  rewritten as `settings.json` on the next save.)
+- The saved values live beside the profile and survive profile restarts and
+  bundle upgrades: `$DSH_PROFILE_DIR/gitlab-assigned/settings.json` when the Host
+  knows that directory, else the loader's profile directory, else the harness home
+  (`$DSH_HOME`, or `~/.dsh`). The Settings page prints the path it is using.
+  (An older `projects.json`, and anything saved under the pre-rename
+  `gitlab-assigned-mrs` directory, is still read and is rewritten as
+  `settings.json` on the next save.)
 
-The token is **not** edited on this page: it stays in the plugin config or the
-`GITLAB_TOKEN` environment variable.
+Each value falls back independently: a settings URL with no settings token uses
+the config token, and a settings token with no settings project list uses the
+config projects. The token itself is stored in plain text, so prefer
+`GITLAB_TOKEN` for long-lived credentials.
 
 ## Project references
 
@@ -123,7 +133,7 @@ object, so repeat every key you still need:
 | key            | type            | default                        | meaning                                                        |
 | -------------- | --------------- | ------------------------------ | -------------------------------------------------------------- |
 | `baseUrl`      | string          | `''` (unset)                   | GitLab instance root, no `/api/v4` suffix                      |
-| `token`        | string          | `GITLAB_TOKEN` env, else empty | personal/project access token with `api` or `read_api` scope    |
+| `token`        | string          | settings file, else `GITLAB_TOKEN` env, else empty | personal/project access token with `api` or `read_api` scope    |
 | `projects`     | string or array | `[]`                           | project references, any form from the table above              |
 | `defaultState` | string          | `opened`                       | `opened`, `merged`, `closed`, or `all`                          |
 | `order`        | string          | `desc`                         | `desc` = newest first (panel default), `asc` = oldest first      |

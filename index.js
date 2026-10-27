@@ -12,8 +12,11 @@
  * small JSON file beside the profile, applied immediately to both surfaces.
  */
 
+import { readFileSync } from 'node:fs';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export const name = 'gitlab-assigned';
 
@@ -115,6 +118,7 @@ export function apply(ctx, config) {
         'GitLab URL is not configured. Open Settings → GitLab MRs and enter your GitLab URL, or set `baseUrl` in the plugin config.',
       );
     }
+    const token = await effectiveToken();
     const url = apiUrl(baseUrl, pathname, params);
     const controller = new AbortController();
     let timedOut = false;
@@ -131,7 +135,7 @@ export function apply(ctx, config) {
       const response = await fetch(url, {
         method: 'GET',
         headers: {
-          'PRIVATE-TOKEN': settings.token,
+          'PRIVATE-TOKEN': token,
           accept: 'application/json',
           'user-agent': 'dsh-gitlab-assigned',
         },
@@ -276,13 +280,17 @@ export function apply(ctx, config) {
 
   // -------------------------------------------------------------- settings
 
-  /** Profile root that holds per-plugin state, or an empty string when unavailable. */
+  /**
+   * Root that holds per-plugin state, resolved once. The desktop Host boots without
+   * the profile variables — they are injected into tool shells, not the Host
+   * process — so fall back to the loader's base directory and, last, the harness
+   * home. An empty string means "nowhere writable", which the settings route reports.
+   */
+  let profileRoot;
+
   function profileDirectory() {
-    return typeof process.env.DSH_PROFILE_DIR === 'string' && process.env.DSH_PROFILE_DIR !== ''
-      ? process.env.DSH_PROFILE_DIR
-      : typeof process.env.DSH_HOME === 'string' && process.env.DSH_HOME !== ''
-        ? process.env.DSH_HOME
-        : '';
+    if (profileRoot === undefined) profileRoot = resolveProfileDirectory(ctx);
+    return profileRoot;
   }
 
   /** Directory holding the local settings override, or null without a profile dir. */
@@ -332,8 +340,8 @@ export function apply(ctx, config) {
   }
 
   /**
-   * Read the local override once. An empty `baseUrl` or `projects` list means "not
-   * set", so the config defaults still apply; the two are independent.
+   * Read the local override once. An empty `baseUrl`, `projects` list or `token`
+   * means "not set", so the config defaults still apply; all three are independent.
    */
   async function readStoredSettings() {
     let parsed = await readJsonFile(storeFilePath());
@@ -343,10 +351,11 @@ export function apply(ctx, config) {
     }
     storedSettings =
       parsed === null
-        ? { baseUrl: '', projects: [] }
+        ? { baseUrl: '', projects: [], token: '' }
         : {
             baseUrl: normalizeBaseUrl(parsed?.baseUrl),
             projects: projectListOf(parsed?.projects),
+            token: normalizeToken(parsed?.token),
           };
     return storedSettings;
   }
@@ -373,9 +382,28 @@ export function apply(ctx, config) {
     return stored.projects.length > 0 ? stored.projects : settings.projects;
   }
 
+  /**
+   * The token both surfaces use: the Settings value when set, else the config or
+   * the GITLAB_TOKEN environment variable. It is only ever sent to GitLab, never
+   * back to the browser.
+   */
+  async function effectiveToken() {
+    const stored = await ensureStoredSettings();
+    return stored.token !== '' ? stored.token : settings.token;
+  }
+
+  /** Where the token in force comes from, for the Settings page hint. */
+  async function effectiveTokenSource() {
+    const stored = await ensureStoredSettings();
+    if (stored.token !== '') return 'settings';
+    return settings.tokenSource;
+  }
+
   function forgetCaches() {
     listCache = undefined;
     projectCache.clear();
+    // The cached token owner belongs to the previous token, so it must be re-read.
+    currentUserPromise = undefined;
   }
 
   async function writeStoredSettings(next) {
@@ -386,11 +414,15 @@ export function apply(ctx, config) {
     await mkdir(dirname(file), { recursive: true });
     await writeFile(
       file,
-      `${JSON.stringify({ version: 2, baseUrl: next.baseUrl, projects: next.projects }, null, 2)}\n`,
-      'utf8',
+      `${JSON.stringify(
+        { version: 3, baseUrl: next.baseUrl, projects: next.projects, token: next.token },
+        null,
+        2,
+      )}\n`,
+      { encoding: 'utf8', mode: 0o600 },
     );
     for (const legacyFile of legacyStoreFilePaths()) await rm(legacyFile, { force: true });
-    storedSettings = { baseUrl: next.baseUrl, projects: next.projects };
+    storedSettings = { baseUrl: next.baseUrl, projects: next.projects, token: next.token };
     forgetCaches();
   }
 
@@ -398,7 +430,7 @@ export function apply(ctx, config) {
     for (const file of [storeFilePath(), ...legacyStoreFilePaths()]) {
       if (file !== null) await rm(file, { force: true });
     }
-    storedSettings = { baseUrl: '', projects: [] };
+    storedSettings = { baseUrl: '', projects: [], token: '' };
     forgetCaches();
   }
 
@@ -635,9 +667,9 @@ export function apply(ctx, config) {
           'GitLab URL is not configured. Open Settings → GitLab MRs and enter your GitLab URL, or set `baseUrl` in the plugin config.',
         );
       }
-      if (settings.token === '') {
+      if ((await effectiveToken()) === '') {
         throw new Error(
-          'No GitLab token is configured. Set `token` in the dsh-gitlab-assigned plugin config, or set the GITLAB_TOKEN environment variable before starting the Harness.',
+          'No GitLab token is configured. Add one on Settings → GitLab MRs, set `token` in the dsh-gitlab-assigned plugin config, or set the GITLAB_TOKEN environment variable before starting the Harness.',
         );
       }
       const state = pickState(args);
@@ -760,8 +792,10 @@ export function apply(ctx, config) {
         error: 'No GitLab URL is configured. Open Settings → GitLab MRs and enter your GitLab URL.',
       });
     }
-    if (settings.token === '') {
-      return writeJson(res, 503, { error: 'No GitLab token is configured in the plugin settings.' });
+    if ((await effectiveToken()) === '') {
+      return writeJson(res, 503, {
+        error: 'No GitLab token is configured. Open Settings → GitLab MRs and add a token.',
+      });
     }
 
     const query = new URL(req.url ?? API_PREFIX, 'http://localhost').searchParams;
@@ -827,20 +861,29 @@ export function apply(ctx, config) {
     });
   }
 
-  /** `GET|POST /gitlab-mrs/api/settings` — the GitLab URL and project list the page edits. */
+  /** `GET|POST /gitlab-mrs/api/settings` — the GitLab URL, project list and token the page edits. */
   async function handleSettings(req, res) {
     if (!isTrustedRequest(req)) return writeJson(res, 403, { error: 'forbidden' });
 
     const snapshot = async () => {
-      const [baseUrl, projects, stored] = await Promise.all([
+      const [baseUrl, projects, stored, token, tokenSource] = await Promise.all([
         effectiveBaseUrl(),
         effectiveProjects(),
         ensureStoredSettings(),
+        effectiveToken(),
+        effectiveTokenSource(),
       ]);
       return {
         baseUrl,
         projects,
-        defaults: { baseUrl: settings.baseUrl, projects: settings.projects },
+        // Never the value itself: the page only needs to know whether one exists.
+        tokenConfigured: token !== '',
+        tokenSource,
+        defaults: {
+          baseUrl: settings.baseUrl,
+          projects: settings.projects,
+          tokenConfigured: settings.token !== '',
+        },
         source: stored.baseUrl !== '' || stored.projects.length > 0 ? 'settings' : 'config',
         storePath: storeFilePath(),
       };
@@ -873,8 +916,14 @@ export function apply(ctx, config) {
     if (projects.length === 0) {
       return writeJson(res, 400, { error: 'Keep at least one project.' });
     }
+    // An absent `token` key keeps the stored token; `""` clears it back to the
+    // plugin config / GITLAB_TOKEN; anything else replaces it.
+    const stored = await ensureStoredSettings();
+    const token = Object.prototype.hasOwnProperty.call(body, 'token')
+      ? normalizeToken(body.token)
+      : stored.token;
     try {
-      await writeStoredSettings({ baseUrl, projects });
+      await writeStoredSettings({ baseUrl, projects, token });
     } catch (error) {
       return writeJson(res, 500, { error: messageOf(error) });
     }
@@ -907,6 +956,46 @@ export function apply(ctx, config) {
 // ---------------------------------------------------------------------- config
 
 /**
+ * A loader base directory counts as the profile root only when its `package.json`
+ * declares a dsh profile; anything else (the app bundle, a scratch directory) is
+ * rejected so settings never land somewhere the profile does not own.
+ */
+function profileDirectoryFromBaseUrl(baseUrl) {
+  if (typeof baseUrl !== 'string' && !(baseUrl instanceof URL)) return '';
+  let directory;
+  try {
+    directory = typeof baseUrl === 'string' ? fileURLToPath(baseUrl) : fileURLToPath(baseUrl.href);
+  } catch {
+    return '';
+  }
+  try {
+    const manifest = JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8'));
+    const profile = manifest?.dsh?.profile;
+    return profile !== null && typeof profile === 'object' ? directory : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Where this machine keeps plugin state: `$DSH_PROFILE_DIR` when the Host has it,
+ * else the loader's profile directory, else `$DSH_HOME`, else `~/.dsh`.
+ */
+function resolveProfileDirectory(ctx) {
+  const explicit = process.env.DSH_PROFILE_DIR;
+  if (typeof explicit === 'string' && explicit !== '') return explicit;
+  const fromLoader = profileDirectoryFromBaseUrl(ctx?.baseUrl);
+  if (fromLoader !== '') return fromLoader;
+  const home = process.env.DSH_HOME;
+  if (typeof home === 'string' && home !== '') return home;
+  try {
+    return join(homedir(), '.dsh');
+  } catch {
+    return '';
+  }
+}
+
+/**
  * Trim and validate a GitLab instance root. An empty string means "not
  * configured", which both the Settings page and the config may leave unset.
  */
@@ -925,6 +1014,11 @@ function projectListOf(value) {
       ? value.split(/[\n,]/)
       : [];
   return dedupe(raw.map(normalizeProjectRef).filter((reference) => reference !== ''));
+}
+
+/** Trim a token; an empty string means "not set", never a valid credential. */
+function normalizeToken(value) {
+  return typeof value === 'string' ? value.trim() : '';
 }
 
 /**
@@ -977,12 +1071,11 @@ function normalizeSettings(config) {
     throw new Error(`gitlab-assigned: baseUrl must be an http(s) URL, got "${source.baseUrl}".`);
   }
 
-  const token =
-    typeof source.token === 'string' && source.token.trim() !== ''
-      ? source.token.trim()
-      : typeof process.env.GITLAB_TOKEN === 'string'
-        ? process.env.GITLAB_TOKEN.trim()
-        : '';
+  const configuredToken = normalizeToken(source.token);
+  const environmentToken = normalizeToken(process.env.GITLAB_TOKEN);
+  const token = configuredToken !== '' ? configuredToken : environmentToken;
+  /** `config` / `env` / `none`; the Settings override is resolved per call. */
+  const tokenSource = configuredToken !== '' ? 'config' : environmentToken !== '' ? 'env' : 'none';
 
   const defaultState =
     typeof source.defaultState === 'string' && STATES.includes(source.defaultState.trim().toLowerCase())
@@ -1004,6 +1097,7 @@ function normalizeSettings(config) {
   return {
     baseUrl,
     token,
+    tokenSource,
     projects: projectListOf(source.projects),
     defaultState,
     order,

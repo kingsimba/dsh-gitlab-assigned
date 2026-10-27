@@ -7,8 +7,10 @@
  *  - `main` with key `gitlab-mrs`: the panel body, a full-height page with its own
  *    header, state filter, day groups, and paging through the Host JSON route
  *    `/gitlab-mrs/api/list`.
- *  - `settings.section` with id `gitlab-mrs`: the GitLab URL and project list the
- *    Host reads, saved through `/gitlab-mrs/api/settings`.
+ *  - `settings.section` with id `gitlab-mrs`: the GitLab URL, token and project
+ *    list the Host reads, saved through `/gitlab-mrs/api/settings`. The token is
+ *    write-only from the page's point of view: the Host reports whether one is
+ *    configured, never the value.
  *
  * The list is newest-first and grouped by local creation day; reaching the bottom
  * loads the next slice, so older requests arrive a page at a time.
@@ -89,11 +91,21 @@ window.__ModuleLoader__.load({
       'open.hint': 'Open on GitLab',
       'settings.nav': 'GitLab MRs',
       'settings.title': 'GitLab merge requests',
-      'settings.description': 'The GitLab instance and projects the sidebar panel and the agent tool read. Saving applies to both immediately.',
+      'settings.description': 'The GitLab instance, token and projects the sidebar panel and the agent tool read. Saving applies to both immediately.',
       'settings.urlLabel': 'GitLab URL',
       'settings.urlPlaceholder': 'https://gitlab.example.com',
       'settings.urlHint': 'The instance root — no /api/v4 suffix.',
       'settings.urlInvalid': 'Enter a full http:// or https:// URL.',
+      'settings.tokenLabel': 'GitLab token',
+      'settings.tokenPlaceholder': 'glpat-…',
+      'settings.tokenPlaceholderSaved': 'A token is saved — leave empty to keep it',
+      'settings.tokenHint': 'A personal or project access token with the api (or read_api) scope. Saved on this machine only; it is never sent to the browser.',
+      'settings.tokenFromSettings': 'Saved here. Leave the field empty to keep it, or clear it below.',
+      'settings.tokenFromConfig': 'Using the token from the plugin config.',
+      'settings.tokenFromEnv': 'Using GITLAB_TOKEN from the environment.',
+      'settings.tokenNone': 'No token yet: the panel and the tool stay idle until one is saved.',
+      'settings.tokenClear': 'Clear saved token',
+      'settings.tokenCleared': 'Saved token cleared.',
       'settings.projectsLabel': 'Projects',
       'settings.hint': 'One per line: a project path (group/project), a numeric id, or any GitLab URL. ssh:// remotes are converted to https paths.',
       'settings.save': 'Save',
@@ -102,7 +114,7 @@ window.__ModuleLoader__.load({
       'settings.saved': 'Saved.',
       'settings.loading': 'Reading settings…',
       'settings.count': '{count} projects',
-      'settings.storeHint': 'Stored at {path}',
+      'settings.storeHint': 'Settings, including the token, are stored at {path}',
       'settings.error': 'Could not save the project list.',
     };
 
@@ -159,11 +171,21 @@ window.__ModuleLoader__.load({
       'open.hint': '在 GitLab 中打开',
       'settings.nav': 'GitLab 合并请求',
       'settings.title': 'GitLab 合并请求',
-      'settings.description': '侧边栏面板与 Agent 工具读取的 GitLab 地址与项目列表，保存后立即生效。',
+      'settings.description': '侧边栏面板与 Agent 工具读取的 GitLab 地址、令牌与项目列表，保存后立即生效。',
       'settings.urlLabel': 'GitLab 地址',
       'settings.urlPlaceholder': 'https://gitlab.example.com',
       'settings.urlHint': '实例根地址，不要带 /api/v4。',
       'settings.urlInvalid': '请输入完整的 http:// 或 https:// 地址。',
+      'settings.tokenLabel': 'GitLab 令牌',
+      'settings.tokenPlaceholder': 'glpat-…',
+      'settings.tokenPlaceholderSaved': '已保存令牌 — 留空则保持不变',
+      'settings.tokenHint': '具有 api（或 read_api）权限的个人或项目访问令牌。仅保存在本机，不会发送到浏览器。',
+      'settings.tokenFromSettings': '已保存在本页。留空则保持不变，也可以在下方清除。',
+      'settings.tokenFromConfig': '当前使用插件配置中的令牌。',
+      'settings.tokenFromEnv': '当前使用环境变量 GITLAB_TOKEN。',
+      'settings.tokenNone': '尚未配置令牌：保存之前面板与工具不会工作。',
+      'settings.tokenClear': '清除已保存的令牌',
+      'settings.tokenCleared': '已清除保存的令牌。',
       'settings.projectsLabel': '项目',
       'settings.hint': '每行一个：项目路径（如 group/project）、数字 ID，或任意 GitLab 链接。ssh:// 地址会转换为 https 路径。',
       'settings.save': '保存',
@@ -172,7 +194,7 @@ window.__ModuleLoader__.load({
       'settings.saved': '已保存。',
       'settings.loading': '正在读取设置…',
       'settings.count': '{count} 个项目',
-      'settings.storeHint': '存储位置：{path}',
+      'settings.storeHint': '设置（含令牌）存储在：{path}',
       'settings.error': '无法保存项目列表。',
     };
 
@@ -239,6 +261,7 @@ window.__ModuleLoader__.load({
 .gmrs_textarea:disabled{opacity:.6}
 .gmrs_actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .gmrs_btnPrimary{border-color:transparent;background:var(--dsw-alias-brand-primary);color:var(--dsw-alias-bg-base);font-weight:600}
+.gmrs_btnQuiet{align-self:flex-start;border-color:var(--dsw-alias-border-l1);background:transparent;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px;padding:3px 8px}
 .gmrs_btnPrimary:hover:not(:disabled){background:var(--dsw-alias-brand-primary);filter:brightness(1.06)}
 .gmrs_status{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}
 .gmrs_statusOk{color:var(--dsw-alias-state-success-primary)}
@@ -875,6 +898,9 @@ window.__ModuleLoader__.load({
       const t = React.useMemo(() => translator(props.t || boundTranslator), [props.t]);
       const [url, setUrl] = React.useState('');
       const [savedUrl, setSavedUrl] = React.useState('');
+      const [token, setToken] = React.useState('');
+      const [tokenConfigured, setTokenConfigured] = React.useState(false);
+      const [tokenSource, setTokenSource] = React.useState('none');
       const [draft, setDraft] = React.useState('');
       const [savedText, setSavedText] = React.useState('');
       const [count, setCount] = React.useState(0);
@@ -889,6 +915,9 @@ window.__ModuleLoader__.load({
         const nextUrl = body !== null && typeof body.baseUrl === 'string' ? body.baseUrl : '';
         setUrl(nextUrl);
         setSavedUrl(nextUrl);
+        setToken('');
+        setTokenConfigured(body !== null && body.tokenConfigured === true);
+        setTokenSource(body !== null && typeof body.tokenSource === 'string' ? body.tokenSource : 'none');
         setDraft(text);
         setSavedText(text);
         setCount(list.length);
@@ -919,7 +948,7 @@ window.__ModuleLoader__.load({
         load();
       }, [load]);
 
-      const send = async (payload) => {
+      const send = async (payload, noticeKey) => {
         setPhase('saving');
         setError('');
         setNotice('');
@@ -935,7 +964,7 @@ window.__ModuleLoader__.load({
             throw new Error(body !== null && typeof body.error === 'string' ? body.error : `HTTP ${response.status}`);
           }
           applyServerState(body);
-          setNotice(t('settings.saved'));
+          setNotice(t(noticeKey || 'settings.saved'));
           setPhase('ready');
         } catch (failure) {
           setError(failure instanceof Error ? failure.message : String(failure));
@@ -943,12 +972,27 @@ window.__ModuleLoader__.load({
         }
       };
 
-      const save = () => send({ baseUrl: url.trim(), projects: draft.split('\n') });
+      /** The form fields every save sends; the token is only included when typed. */
+      const formPayload = () => {
+        const payload = { baseUrl: url.trim(), projects: draft.split('\n') };
+        if (token.trim() !== '') payload.token = token.trim();
+        return payload;
+      };
+      const save = () => send(formPayload());
+      const clearToken = () => send({ ...formPayload(), token: '' }, 'settings.tokenCleared');
       const reset = () => send({ reset: true });
       const busy = phase === 'saving' || phase === 'loading';
       const urlValid = /^https?:\/\/[^/\s]+/i.test(url.trim());
-      const dirty = url.trim() !== savedUrl || draft !== savedText;
+      const dirty = url.trim() !== savedUrl || draft !== savedText || token.trim() !== '';
       const statusText = phase === 'saving' ? t('settings.saving') : notice;
+      const tokenHint =
+        tokenSource === 'settings'
+          ? t('settings.tokenFromSettings')
+          : tokenSource === 'config'
+            ? t('settings.tokenFromConfig')
+            : tokenSource === 'env'
+              ? t('settings.tokenFromEnv')
+              : t('settings.tokenNone');
 
       return h('section', { className: 'gmrs_settings' }, [
         h('h2', { className: 'gmrs_settingsTitle', key: 'title' }, t('settings.title')),
@@ -972,6 +1016,36 @@ window.__ModuleLoader__.load({
           h('p', { className: 'gmrs_hint', key: 'hint' },
             urlValid || url.trim() === '' ? t('settings.urlHint') : t('settings.urlInvalid')),
         ]),
+        h('div', { className: 'gmrs_field', key: 'token' }, [
+          h('label', { className: 'gmrs_label', key: 'label', htmlFor: 'gmrs-token' },
+            t('settings.tokenLabel')),
+          h('input', {
+            id: 'gmrs-token',
+            className: 'gmrs_input',
+            key: 'input',
+            type: 'password',
+            value: token,
+            autoComplete: 'off',
+            spellCheck: false,
+            placeholder: tokenConfigured ? t('settings.tokenPlaceholderSaved') : t('settings.tokenPlaceholder'),
+            disabled: phase === 'loading',
+            onChange: (event) => {
+              setToken(event.target.value);
+              setNotice('');
+            },
+          }),
+          h('p', { className: 'gmrs_hint', key: 'hint' }, t('settings.tokenHint')),
+          h('p', { className: 'gmrs_hint', key: 'source' }, tokenHint),
+          tokenSource === 'settings'
+            ? h('button', {
+                className: 'gmrs_btn gmrs_btnQuiet',
+                type: 'button',
+                key: 'clear',
+                onClick: clearToken,
+                disabled: busy,
+              }, t('settings.tokenClear'))
+            : null,
+        ].filter((node) => node !== null)),
         h('div', { className: 'gmrs_field', key: 'projects' }, [
           h('label', { className: 'gmrs_label', key: 'label', htmlFor: 'gmrs-projects' },
             t('settings.projectsLabel')),

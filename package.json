@@ -1,6 +1,6 @@
 {
   "name": "dsh-gitlab-assigned",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "private": true,
   "description": "Global Harness tool plus sidebar panel and settings page: GitLab merge requests assigned to you across a configurable project list, newest first, grouped by day, with project tags.",
   "type": "module",
